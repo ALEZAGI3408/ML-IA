@@ -17,38 +17,59 @@ from sklearn.tree import plot_tree
 st.set_page_config(page_title="ML Supervisado Demo", layout="wide")
 st.title("🧠 Visualizador de Modelos Supervisados con Datos Simulados")
 
-# --- Parámetros del dataset ---
-st.sidebar.header("Configuración del Dataset")
-n_samples = st.sidebar.slider("Número de muestras", 100, 5000, 1000)
-n_features = st.sidebar.slider("Número de características", 2, 20, 5)
-n_informative = st.sidebar.slider("Características informativas", 1, n_features, 3)
-random_state = st.sidebar.number_input("Random seed", 0, 9999, 42)
+# --- Cargar CSV personalizado ---
+st.sidebar.header("Importar Dataset")
+uploaded_file = st.sidebar.file_uploader("Sube tu archivo CSV", type=["csv"])
 
-# --- Generar datos ---
-X, y = make_classification(
-    n_samples=n_samples,
-    n_features=n_features,
-    n_informative=n_informative,
-    n_redundant=0,
-    n_classes=2,
-    random_state=random_state,
-)
+use_custom_data = False
+df = None
 
-df = pd.DataFrame(X, columns=[f"Feature_{i}" for i in range(X.shape[1])])
-df["Target"] = y
+if uploaded_file is not None:
+    try:
+        df = pd.read_csv(uploaded_file)
+        st.success("✅ Dataset cargado exitosamente.")
+        use_custom_data = True
+        if "Target" not in df.columns:
+            st.error("❗ El dataset debe contener una columna llamada 'Target' para entrenar los modelos supervisados.")
+            st.stop()
+        if df.drop("Target", axis=1).empty:
+            st.error("❗ El dataset debe contener al menos una columna de características además de 'Target'.")
+            st.stop()
+    except Exception as e:
+        st.error(f"❌ Error al leer el archivo: {e}")
+        st.stop()
 
+# --- Parámetros del dataset (solo si no se cargó un CSV) ---
+if not use_custom_data:
+    st.sidebar.header("Configuración del Dataset")
+    n_samples = st.sidebar.slider("Número de muestras", 100, 5000, 1000)
+    n_features = st.sidebar.slider("Número de características", 2, 20, 5)
+    n_informative = st.sidebar.slider("Características informativas", 1, n_features, 3)
+    random_state = st.sidebar.number_input("Random seed", 0, 9999, 42)
+
+    # --- Generar datos ---
+    X, y = make_classification(
+        n_samples=n_samples,
+        n_features=n_features,
+        n_informative=n_informative,
+        n_redundant=0,
+        n_classes=2,
+        random_state=random_state,
+    )
+    df = pd.DataFrame(X, columns=[f"Feature_{i}" for i in range(X.shape[1])])
+    df["Target"] = y
+
+# --- Mostrar vista previa ---
 st.subheader("Vista previa del Dataset")
 st.dataframe(df.head())
 
-if "Target" not in df.columns:
-    st.error("❗ El dataset debe contener una columna llamada 'Target' para entrenar los modelos supervisados.")
-    st.stop()
+# --- Preparar datos para modelado ---
 X = df.drop("Target", axis=1)
 y = df["Target"]
 
 # --- División en entrenamiento y prueba ---
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.3, random_state=random_state
+    X, y, test_size=0.3, random_state=random_state if not use_custom_data else 42
 )
 
 # --- Escalado de características ---
@@ -65,7 +86,7 @@ if model_type == "Logistic Regression":
 elif model_type == "SVM":
     model = SVC(probability=True)
 elif model_type == "Decision Tree":
-    model = DecisionTreeClassifier(max_depth=5, random_state=random_state)
+    model = DecisionTreeClassifier(max_depth=5, random_state=42)
 else:
     model = RandomForestClassifier()
 
@@ -92,7 +113,7 @@ if model_type in ["Random Forest", "Decision Tree"]:
     st.subheader("Importancia de las Características")
     importances = model.feature_importances_
     feat_df = pd.DataFrame({
-        "Feature": [f"Feature_{i}" for i in range(len(importances))],
+        "Feature": X.columns,
         "Importance": importances
     }).sort_values(by="Importance", ascending=False)
     st.bar_chart(feat_df.set_index("Feature"))
@@ -101,14 +122,14 @@ if model_type in ["Random Forest", "Decision Tree"]:
 if model_type == "Decision Tree":
     st.subheader("Visualización del Árbol de Decisión")
     fig_tree, ax_tree = plt.subplots(figsize=(15, 10))
-    plot_tree(model, feature_names=[f"Feature_{i}" for i in range(X.shape[1])], class_names=["Clase 0", "Clase 1"], filled=True, ax=ax_tree)
+    plot_tree(model, feature_names=X.columns, class_names=["Clase 0", "Clase 1"], filled=True, ax=ax_tree)
     ax_tree.set_title("Estructura del Árbol de Decisión")
     st.pyplot(fig_tree)
 
 # --- EDA (Exploratory Data Analysis) ---
 st.subheader("🔍 Análisis Exploratorio de Datos (EDA)")
 
-st.markdown("Este análisis te permite explorar el dataset generado antes de aplicar modelos de Machine Learning.")
+st.markdown("Este análisis te permite explorar el dataset antes de aplicar modelos de Machine Learning.")
 
 # --- Mostrar estadísticas descriptivas ---
 if st.checkbox("📊 Mostrar estadísticas descriptivas"):
@@ -154,33 +175,6 @@ if st.checkbox("📌 Mostrar scatterplot entre dos características"):
     sns.scatterplot(data=df, x=col1, y=col2, hue="Target", palette="cool", ax=ax_scatter)
     ax_scatter.set_title(f"{col1} vs {col2} por clase objetivo")
     st.pyplot(fig_scatter)
-
-# --- Cargar CSV personalizado ---
-st.sidebar.header("Importar Dataset")
-uploaded_file = st.sidebar.file_uploader("Sube tu archivo CSV", type=["csv"])
-
-use_custom_data = False
-
-if uploaded_file is not None:
-    try:
-        df = pd.read_csv(uploaded_file)
-        st.success("✅ Dataset cargado exitosamente.")
-        use_custom_data = True
-    except Exception as e:
-        st.error(f"❌ Error al leer el archivo: {e}")
-
-# --- Generar datos si no se subió un CSV ---
-if not use_custom_data:
-    X, y = make_classification(
-        n_samples=n_samples,
-        n_features=n_features,
-        n_informative=n_informative,
-        n_redundant=0,
-        n_classes=2,
-        random_state=random_state,
-    )
-    df = pd.DataFrame(X, columns=[f"Feature_{i}" for i in range(X.shape[1])])
-    df["Target"] = y
 
 # --- Descargar dataset ---
 st.download_button(

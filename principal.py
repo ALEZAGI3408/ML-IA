@@ -38,6 +38,12 @@ df["Target"] = y
 st.subheader("Vista previa del Dataset")
 st.dataframe(df.head())
 
+if "Target" not in df.columns:
+    st.error("❗ El dataset debe contener una columna llamada 'Target' para entrenar los modelos supervisados.")
+    st.stop()
+X = df.drop("Target", axis=1)
+y = df["Target"]
+
 # --- División en entrenamiento y prueba ---
 X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.3, random_state=random_state
@@ -137,3 +143,39 @@ if st.checkbox("📌 Mostrar scatterplot entre dos características"):
     sns.scatterplot(data=df, x=col1, y=col2, hue="Target", palette="cool", ax=ax_scatter)
     ax_scatter.set_title(f"{col1} vs {col2} por clase objetivo")
     st.pyplot(fig_scatter)
+
+# --- Cargar CSV personalizado ---
+st.sidebar.header("Importar Dataset")
+uploaded_file = st.sidebar.file_uploader("Sube tu archivo CSV", type=["csv"])
+
+use_custom_data = False
+
+if uploaded_file is not None:
+    try:
+        df = pd.read_csv(uploaded_file)
+        st.success("✅ Dataset cargado exitosamente.")
+        use_custom_data = True
+    except Exception as e:
+        st.error(f"❌ Error al leer el archivo: {e}")
+
+# --- Generar datos si no se subió un CSV ---
+if not use_custom_data:
+    X, y = make_classification(
+        n_samples=n_samples,
+        n_features=n_features,
+        n_informative=n_informative,
+        n_redundant=0,
+        n_classes=2,
+        random_state=random_state,
+    )
+    df = pd.DataFrame(X, columns=[f"Feature_{i}" for i in range(X.shape[1])])
+    df["Target"] = y
+
+# --- Descargar dataset ---
+st.download_button(
+    label="⬇️ Descargar Dataset como CSV",
+    data=df.to_csv(index=False).encode("utf-8"),
+    file_name="dataset.csv",
+    mime="text/csv"
+)
+

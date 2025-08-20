@@ -1,4 +1,6 @@
 import streamlit as st
+import pandas as pd
+import numpy as np
 from sklearn.datasets import make_classification
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
@@ -7,8 +9,6 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.metrics import classification_report, confusion_matrix
-import pandas as pd
-import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.tree import plot_tree
@@ -16,6 +16,75 @@ from sklearn.tree import plot_tree
 # --- Configuración de la página ---
 st.set_page_config(page_title="ML Supervisado Demo", layout="wide")
 st.title("🧠 Visualizador de Modelos Supervisados con Datos Simulados")
+
+# --- Función para validar dataset ---
+def validate_dataset(df):
+    """
+    Valida que el dataset cumpla con los requisitos para el modelado supervisado.
+    Retorna un diccionario con el estado y mensajes de error.
+    """
+    result = {"is_valid": True, "messages": []}
+
+    # Verificar si hay una columna 'Target'
+    if "Target" not in df.columns:
+        result["is_valid"] = False
+        result["messages"].append("❗ El dataset debe contener una columna llamada 'Target' para entrenar los modelos supervisados.")
+    
+    # Verificar si hay al menos una columna de características
+    if df.drop("Target", axis=1, errors="ignore").empty:
+        result["is_valid"] = False
+        result["messages"].append("❗ El dataset debe contener al menos una columna de características además de 'Target'.")
+    
+    # Verificar valores nulos
+    missing_values = df.isnull().sum().sum()
+    if missing_values > 0:
+        result["messages"].append(f"⚠️ Se detectaron {missing_values} valores nulos en el dataset.")
+    
+    # Verificar tipos de datos
+    non_numeric_cols = df.drop("Target", axis=1, errors="ignore").select_dtypes(exclude=[np.number]).columns
+    if len(non_numeric_cols) > 0:
+        result["messages"].append(f"⚠️ Las columnas {list(non_numeric_cols)} contienen datos no numéricos. Se intentará convertirlas.")
+    
+    # Verificar si 'Target' es adecuado para clasificación binaria
+    if "Target" in df.columns:
+        unique_targets = df["Target"].nunique()
+        if unique_targets != 2:
+            result["is_valid"] = False
+            result["messages"].append(f"❗ La columna 'Target' debe tener exactamente 2 clases para clasificación binaria (encontradas: {unique_targets}).")
+    
+    return result
+
+# --- Función para limpiar y corregir dataset ---
+def clean_dataset(df, handle_missing="mean"):
+    """
+    Limpia el dataset manejando valores nulos y datos no numéricos.
+    handle_missing: 'mean' (imputar con media), 'median' (imputar con mediana), 'drop' (eliminar filas)
+    """
+    df_clean = df.copy()
+    
+    # Convertir columnas no numéricas (excepto 'Target') a numéricas si es posible
+    for col in df_clean.drop("Target", axis=1, errors="ignore").columns:
+        if df_clean[col].dtype not in [np.float64, np.int64]:
+            try:
+                df_clean[col] = pd.to_numeric(df_clean[col], errors="coerce")
+            except:
+                st.warning(f"⚠️ No se pudo convertir la columna {col} a numérica. Los valores no numéricos se establecerán como NaN.")
+    
+    # Manejar valores nulos
+    if df_clean.isnull().any().any():
+        if handle_missing == "drop":
+            df_clean = df_clean.dropna()
+            st.info(f"✅ Se eliminaron filas con valores nulos. Nuevo tamaño: {df_clean.shape}")
+        elif handle_missing == "mean":
+            for col in df_clean.drop("Target", axis=1, errors="ignore").columns:
+                df_clean[col].fillna(df_clean[col].mean(), inplace=True)
+            st.info("✅ Valores nulos imputados con la media de cada columna.")
+        elif handle_missing == "median":
+            for col in df_clean.drop("Target", axis=1, errors="ignore").columns:
+                df_clean[col].fillna(df_clean[col].median(), inplace=True)
+            st.info("✅ Valores nulos imputados con la mediana de cada columna.")
+    
+    return df_clean
 
 # --- Cargar CSV personalizado ---
 st.sidebar.header("Importar Dataset")
@@ -28,13 +97,31 @@ if uploaded_file is not None:
     try:
         df = pd.read_csv(uploaded_file)
         st.success("✅ Dataset cargado exitosamente.")
+        
+        # Validar dataset
+        validation = validate_dataset(df)
+        if not validation["is_valid"]:
+            for msg in validation["messages"]:
+                st.error(msg)
+            st.stop()
+        
+        # Mostrar advertencias (si las hay, como valores nulos)
+        for msg in validation["messages"]:
+            st.warning(msg)
+        
+        # Opciones para manejar valores nulos
+        st.sidebar.header("Manejo de Valores Nulos")
+        missing_strategy = st.sidebar.selectbox(
+            "Selecciona cómo manejar valores nulos",
+            ["Imputar con media", "Imputar con mediana", "Eliminar filas"],
+            key="missing_strategy"
+        )
+        
+        # Limpiar dataset
+        handle_missing = {"Imputar con media": "mean", "Imputar con mediana": "median", "Eliminar filas": "drop"}
+        df = clean_dataset(df, handle_missing=handle_missing[missing_strategy])
+        
         use_custom_data = True
-        if "Target" not in df.columns:
-            st.error("❗ El dataset debe contener una columna llamada 'Target' para entrenar los modelos supervisados.")
-            st.stop()
-        if df.drop("Target", axis=1).empty:
-            st.error("❗ El dataset debe contener al menos una columna de características además de 'Target'.")
-            st.stop()
     except Exception as e:
         st.error(f"❌ Error al leer el archivo: {e}")
         st.stop()
@@ -116,7 +203,58 @@ if model_type in ["Random Forest", "Decision Tree"]:
         "Feature": X.columns,
         "Importance": importances
     }).sort_values(by="Importance", ascending=False)
-    st.bar_chart(feat_df.set_index("Feature"))
+    
+    # Crear gráfico de barras con Chart.js
+    chart_data = {
+        "type": "bar",
+        "data": {
+            "labels": feat_df["Feature"].tolist(),
+            "datasets": [{
+                "label": "Importancia",
+                "data": feat_df["Importance"].tolist(),
+                "backgroundColor": "rgba(54, 162, 235, 0.6)",
+                "borderColor": "rgba(54, 162, 235, 1)",
+                "borderWidth": 1
+            }]
+        },
+        "options": {
+            "scales": {
+                "y": {
+                    "beginAtZero": True,
+                    "title": {
+                        "display": True,
+                        "text": "Importancia"
+                    }
+                },
+                "x": {
+                    "title": {
+                        "display": True,
+                        "text": "Características"
+                    }
+                }
+            },
+            "plugins": {
+                "legend": {
+                    "display": False
+                },
+                "title": {
+                    "display": True,
+                    "text": "Importancia de las Características"
+                }
+            }
+        }
+    }
+    st.markdown("### Gráfico de Importancia de Características")
+    st.components.v1.html(f"""
+        <div style="background-color: white; padding: 20px; border-radius: 5px;">
+            <canvas id="featureImportanceChart"></canvas>
+        </div>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script>
+            const ctx = document.getElementById('featureImportanceChart').getContext('2d');
+            new Chart(ctx, {JSON.stringify(chart_data)});
+        </script>
+    """, height=400)
 
 # --- Visualización del árbol de decisión ---
 if model_type == "Decision Tree":
@@ -128,7 +266,6 @@ if model_type == "Decision Tree":
 
 # --- EDA (Exploratory Data Analysis) ---
 st.subheader("🔍 Análisis Exploratorio de Datos (EDA)")
-
 st.markdown("Este análisis te permite explorar el dataset antes de aplicar modelos de Machine Learning.")
 
 # --- Mostrar estadísticas descriptivas ---
@@ -157,7 +294,58 @@ if st.checkbox("🧰 Mostrar boxplot por clase objetivo"):
 if st.checkbox("🧮 Mostrar distribución de clases"):
     st.write("Distribución de la variable objetivo:")
     class_counts = df["Target"].value_counts().rename(index={0: "Clase 0", 1: "Clase 1"})
-    st.bar_chart(class_counts)
+    
+    # Crear gráfico de barras con Chart.js
+    chart_data = {
+        "type": "bar",
+        "data": {
+            "labels": class_counts.index.tolist(),
+            "datasets": [{
+                "label": "Conteo de Clases",
+                "data": class_counts.values.tolist(),
+                "backgroundColor": ["rgba(255, 99, 132, 0.6)", "rgba(54, 162, 235, 0.6)"],
+                "borderColor": ["rgba(255, 99, 132, 1)", "rgba(54, 162, 235, 1)"],
+                "borderWidth": 1
+            }]
+        },
+        "options": {
+            "scales": {
+                "y": {
+                    "beginAtZero": True,
+                    "title": {
+                        "display": True,
+                        "text": "Conteo"
+                    }
+                },
+                "x": {
+                    "title": {
+                        "display": True,
+                        "text": "Clases"
+                    }
+                }
+            },
+            "plugins": {
+                "legend": {
+                    "display": False
+                },
+                "title": {
+                    "display": True,
+                    "text": "Distribución de Clases"
+                }
+            }
+        }
+    }
+    st.markdown("### Gráfico de Distribución de Clases")
+    st.components.v1.html(f"""
+        <div style="background-color: white; padding: 20px; border-radius: 5px;">
+            <canvas id="classDistributionChart"></canvas>
+        </div>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script>
+            const ctx = document.getElementById('classDistributionChart').getContext('2d');
+            new Chart(ctx, {JSON.stringify(chart_data)});
+        </script>
+    """, height=400)
 
 # --- Mapa de calor de correlaciones ---
 if st.checkbox("🔗 Mostrar mapa de calor de correlación"):
@@ -176,10 +364,10 @@ if st.checkbox("📌 Mostrar scatterplot entre dos características"):
     ax_scatter.set_title(f"{col1} vs {col2} por clase objetivo")
     st.pyplot(fig_scatter)
 
-# --- Descargar dataset ---
+# --- Descargar dataset limpio ---
 st.download_button(
-    label="⬇️ Descargar Dataset como CSV",
+    label="⬇️ Descargar Dataset Limpio como CSV",
     data=df.to_csv(index=False).encode("utf-8"),
-    file_name="dataset.csv",
+    file_name="dataset_clean.csv",
     mime="text/csv"
 )

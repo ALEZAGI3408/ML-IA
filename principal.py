@@ -5,11 +5,13 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
+from sklearn.tree import DecisionTreeClassifier
 from sklearn.metrics import classification_report, confusion_matrix
 import pandas as pd
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
+from sklearn.tree import plot_tree
 
 # --- Configuración de la página ---
 st.set_page_config(page_title="ML Supervisado Demo", layout="wide")
@@ -56,12 +58,14 @@ X_test_scaled = scaler.transform(X_test)
 
 # --- Selección de modelo ---
 st.sidebar.header("Modelo de ML")
-model_type = st.sidebar.selectbox("Selecciona un modelo", ["Logistic Regression", "SVM", "Random Forest"])
+model_type = st.sidebar.selectbox("Selecciona un modelo", ["Logistic Regression", "SVM", "Random Forest", "Decision Tree"])
 
 if model_type == "Logistic Regression":
     model = LogisticRegression()
 elif model_type == "SVM":
     model = SVC(probability=True)
+elif model_type == "Decision Tree":
+    model = DecisionTreeClassifier(max_depth=5, random_state=random_state)
 else:
     model = RandomForestClassifier()
 
@@ -84,7 +88,7 @@ ax.set_ylabel("Real")
 st.pyplot(fig)
 
 # --- Importancia de características (si aplica) ---
-if model_type == "Random Forest":
+if model_type in ["Random Forest", "Decision Tree"]:
     st.subheader("Importancia de las Características")
     importances = model.feature_importances_
     feat_df = pd.DataFrame({
@@ -93,6 +97,13 @@ if model_type == "Random Forest":
     }).sort_values(by="Importance", ascending=False)
     st.bar_chart(feat_df.set_index("Feature"))
 
+# --- Visualización del árbol de decisión ---
+if model_type == "Decision Tree":
+    st.subheader("Visualización del Árbol de Decisión")
+    fig_tree, ax_tree = plt.subplots(figsize=(15, 10))
+    plot_tree(model, feature_names=[f"Feature_{i}" for i in range(X.shape[1])], class_names=["Clase 0", "Clase 1"], filled=True, ax=ax_tree)
+    ax_tree.set_title("Estructura del Árbol de Decisión")
+    st.pyplot(fig_tree)
 
 # --- EDA (Exploratory Data Analysis) ---
 st.subheader("🔍 Análisis Exploratorio de Datos (EDA)")
@@ -178,4 +189,3 @@ st.download_button(
     file_name="dataset.csv",
     mime="text/csv"
 )
-

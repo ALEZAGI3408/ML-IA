@@ -88,3 +88,52 @@ if model_type == "Random Forest":
     st.bar_chart(feat_df.set_index("Feature"))
 
 
+# --- EDA (Exploratory Data Analysis) ---
+st.subheader("🔍 Análisis Exploratorio de Datos (EDA)")
+
+st.markdown("Este análisis te permite explorar el dataset generado antes de aplicar modelos de Machine Learning.")
+
+# --- Mostrar estadísticas descriptivas ---
+if st.checkbox("📊 Mostrar estadísticas descriptivas"):
+    st.write(df.describe())
+
+# --- Selección de variables para análisis gráfico ---
+st.sidebar.subheader("Opciones de EDA")
+selected_feature = st.sidebar.selectbox("Selecciona una característica para análisis gráfico", df.columns[:-1])
+
+# --- Histograma ---
+if st.checkbox("📈 Mostrar histograma de una característica"):
+    fig_hist, ax_hist = plt.subplots()
+    sns.histplot(df[selected_feature], kde=True, ax=ax_hist, bins=20, color="skyblue")
+    ax_hist.set_title(f"Distribución de {selected_feature}")
+    st.pyplot(fig_hist)
+
+# --- Boxplot ---
+if st.checkbox("🧰 Mostrar boxplot por clase objetivo"):
+    fig_box, ax_box = plt.subplots()
+    sns.boxplot(data=df, x="Target", y=selected_feature, ax=ax_box, palette="Set2")
+    ax_box.set_title(f"{selected_feature} por clase objetivo")
+    st.pyplot(fig_box)
+
+# --- Distribución de la variable objetivo ---
+if st.checkbox("🧮 Mostrar distribución de clases"):
+    st.write("Distribución de la variable objetivo:")
+    class_counts = df["Target"].value_counts().rename(index={0: "Clase 0", 1: "Clase 1"})
+    st.bar_chart(class_counts)
+
+# --- Mapa de calor de correlaciones ---
+if st.checkbox("🔗 Mostrar mapa de calor de correlación"):
+    corr_matrix = df.iloc[:, :-1].corr()
+    fig_corr, ax_corr = plt.subplots(figsize=(10, 6))
+    sns.heatmap(corr_matrix, annot=True, cmap="coolwarm", ax=ax_corr)
+    ax_corr.set_title("Matriz de correlación entre características")
+    st.pyplot(fig_corr)
+
+# --- Scatterplot personalizado ---
+if st.checkbox("📌 Mostrar scatterplot entre dos características"):
+    col1 = st.sidebar.selectbox("X axis", df.columns[:-1], key="scatter_x")
+    col2 = st.sidebar.selectbox("Y axis", df.columns[:-1], key="scatter_y")
+    fig_scatter, ax_scatter = plt.subplots()
+    sns.scatterplot(data=df, x=col1, y=col2, hue="Target", palette="cool", ax=ax_scatter)
+    ax_scatter.set_title(f"{col1} vs {col2} por clase objetivo")
+    st.pyplot(fig_scatter)
